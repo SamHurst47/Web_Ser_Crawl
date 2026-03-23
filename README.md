@@ -1,1 +1,6 @@
 # Web_Ser_Crawl
+• Project overview and purpose
+• Installation/setup instructions
+• Usage examples for all four commands
+• Testing instructions
+• Any dependencies and how to install them
