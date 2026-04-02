@@ -5,25 +5,25 @@ class SearchEngine:
         self.manager = index_manager
 
     def execute_find(self, query):
-        """
-        Processes a query string (e.g., 'good friends') and returns 
-        IDs of quotes containing ALL those words.
-        """
-        # Tokenize the query into individual words
+        # 1. Clean the query and split into individual words
+        # This handles "good friends" -> ["good", "friends"]
         query_words = re.findall(r'\w+', query.lower())
+        
         if not query_words:
             return []
 
-        # Get the set of IDs for the first word
-        # We access the inverted_index from the manager
-        results = self.manager.inverted_index.get(query_words[0], set())
+        # 2. Get the starting set from the first word
+        # We use .get(word, set()) to avoid KeyErrors if the word isn't indexed
+        result_set = self.manager.inverted_index.get(query_words[0], set())
 
-        # Perform Intersection (AND logic) for subsequent words
+        # 3. Intersect with sets of all subsequent words
         for word in query_words[1:]:
-            word_ids = self.manager.inverted_index.get(word, set())
-            results = results.intersection(word_ids)
+            word_set = self.manager.inverted_index.get(word, set())
+            result_set = result_set.intersection(word_set)
             
-            if not results: # Optimization: stop if no common IDs remain
+            # Optimization: If the intersection is already empty, stop looking
+            if not result_set:
                 break
-                
-        return sorted(list(results))
+
+        # Return a sorted list of IDs
+        return sorted(list(result_set))

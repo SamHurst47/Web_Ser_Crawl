@@ -29,8 +29,8 @@ class IndexManager:
                     words = re.findall(r'\w+', clean_entry.lower())
                     for word in set(words): # 'set' prevents duplicate IDs for same word in one quote
                         if word not in self.inverted_index:
-                            self.inverted_index[word] = []
-                        self.inverted_index[word].append(idx)
+                            self.inverted_index[word] = set() 
+                        self.inverted_index[word].add(idx)
             return self.quotes
         except Exception as e:
             print(f"Error: {e}")
