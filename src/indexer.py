@@ -3,12 +3,25 @@ import re
 
 class IndexManager:
     def __init__(self):
-        self.data_path = os.path.join(os.getcwd(), "..", "data", "index.txt")
-        self.quotes = []          # List of raw quotes
-        self.inverted_index = {}  # Word -> List of Quote IDs
+        # Safely points to ../data/index.txt regardless of operating system
+        self.data_dir = os.path.join(os.getcwd(), "..", "data")
+        self.data_path = os.path.join(self.data_dir, "index.txt")
+        self.quotes = []          
+        self.inverted_index = {}  
+
+    def save_index(self, results):
+        """Saves the crawled results to the file system."""
+        if not os.path.exists(self.data_dir):
+            os.makedirs(self.data_dir)
+
+        with open(self.data_path, "w", encoding="utf-8") as f:
+            for item in results:
+                f.write(f"AUTHOR: {item['author']}\nQUOTE: {item['text']}\n{'-'*20}\n")
+        
+        return self.data_path
 
     def load_index(self):
-        """Loads index and builds the inverted mapping."""
+        """Reads index.txt and builds the Inverted Index mapping."""
         if not os.path.exists(self.data_path):
             return None
         
@@ -17,25 +30,32 @@ class IndexManager:
         
         try:
             with open(self.data_path, "r", encoding="utf-8") as f:
-                # Split by the separator we used in 'build'
-                content = f.read().split("-" * 20)
-                for idx, entry in enumerate(content):
+                content = f.read()
+                
+                # Handle completely empty files gracefully
+                if not content.strip():
+                    return []
+
+                entries = content.split("-" * 20)
+                
+                for idx, entry in enumerate(entries):
                     clean_entry = entry.strip()
-                    if not clean_entry: continue
+                    if not clean_entry: 
+                        continue
                     
                     self.quotes.append(clean_entry)
                     
-                    # Tokenize words (lowercase, alphanumeric only)
+                    # Tokenize: lowercases everything and removes punctuation
                     words = re.findall(r'\w+', clean_entry.lower())
-                    for word in set(words): # 'set' prevents duplicate IDs for same word in one quote
+                    
+                    # Build Inverted Index using Sets (required for AND logic later)
+                    for word in set(words):
                         if word not in self.inverted_index:
-                            self.inverted_index[word] = set() 
+                            self.inverted_index[word] = set()
                         self.inverted_index[word].add(idx)
+                        
             return self.quotes
+            
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"[-] Error loading file: {e}")
             return None
-
-    def get_word_index(self, word):
-        """Returns the list of quote IDs containing the word."""
-        return self.inverted_index.get(word.lower(), [])
