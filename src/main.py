@@ -43,26 +43,22 @@ class SearchToolShell(cmd.Cmd):
 
     def do_build(self, arg):
         """Build the index from the web."""
-        print("[*] Building index...")
+        # Explicit warning about the required 6-second politeness delay
+        print("[*] Starting crawl. This will take a few moments due to the required 6-second politeness delay between pages...")
+        
         crawler = QuoteCrawler()
         results = crawler.crawl()
         
         if not results:
-            print("[-] Error: No data found.")
+            print("[-] Error: No data found. Check your network connection.")
             return
 
-        target_dir = os.path.join(os.getcwd(), "..", "data")
-        file_path = os.path.join(target_dir, "index.txt")
-
         try:
-            if not os.path.exists(target_dir):
-                os.makedirs(target_dir)
-            with open(file_path, "w", encoding="utf-8") as f:
-                for item in results:
-                    f.write(f"AUTHOR: {item['author']}\nQUOTE: {item['text']}\n{'-'*20}\n")
-            print(f"[+] Build successful! Saved to {file_path}")
+            # Delegate the file saving to the IndexManager
+            saved_path = self.manager.save_index(results)
+            print(f"[+] Build successful! {len(results)} quotes saved to:\n    {saved_path}")
         except Exception as e:
-            print(f"[-] File error: {e}")
+            print(f"[-] Critical Error saving file: {e}")
 
     def do_load(self, arg):
         """Load index from file."""
