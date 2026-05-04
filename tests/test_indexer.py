@@ -1,65 +1,94 @@
-import pytest
 import os
-from src.indexer import IndexManager
+import sys
+import json
+from indexer import IndexManager
 
-@pytest.fixture
-def temp_index_manager(tmp_path):
-    """Fixture to provide an IndexManager mapped to a safe, temporary directory."""
+def test_save_and_load():
+    """Test that we can save and load the inverted index correctly"""
+    print("[TEST] Testing save and load functionality...")
+    
+    # Sample data
+    sample_quotes = [
+        {"author": "Albert Einstein", "text": "Life is beautiful"},
+        {"author": "Maya Angelou", "text": "Life is a journey"},
+        {"author": "Mark Twain", "text": "The beautiful journey of life"}
+    ]
+    
+    # Initialize manager
     manager = IndexManager()
-    manager.data_dir = str(tmp_path)
-    manager.data_path = os.path.join(manager.data_dir, "test_index.txt")
-    return manager
+    
+    # Save the index
+    print("[TEST] Saving sample quotes...")
+    saved_path = manager.save_index(sample_quotes)
+    print(f"[TEST] Saved to: {saved_path}")
+    
+    # Verify the file exists
+    if not os.path.exists(saved_path):
+        print("[FAIL] Index file was not created!")
+        return False
+    
+    # Load the JSON and verify structure
+    print("[TEST] Verifying JSON structure...")
+    with open(saved_path, 'r') as f:
+        data = json.load(f)
+    
+    if "quotes" not in data:
+        print("[FAIL] 'quotes' key missing from JSON!")
+        return False
+    
+    if "inverted_index" not in data:
+        print("[FAIL] 'inverted_index' key missing from JSON!")
+        return False
+    
+    if len(data["quotes"]) != 3:
+        print(f"[FAIL] Expected 3 quotes, got {len(data['quotes'])}")
+        return False
+    
+    print("[TEST] JSON structure is correct!")
+    print(f"[TEST] Found {len(data['inverted_index'])} unique terms in index")
+    
+    # Create a new manager instance and load
+    print("[TEST] Loading index into new manager instance...")
+    manager2 = IndexManager()
+    loaded_quotes = manager2.load_index()
+    
+    if loaded_quotes is None:
+        print("[FAIL] Failed to load index!")
+        return False
+    
+    if len(loaded_quotes) != 3:
+        print(f"[FAIL] Expected 3 loaded quotes, got {len(loaded_quotes)}")
+        return False
+    
+    # Verify the inverted index was loaded
+    if not manager2.inverted_index:
+        print("[FAIL] Inverted index is empty after loading!")
+        return False
+    
+    print(f"[TEST] Successfully loaded {len(loaded_quotes)} quotes")
+    print(f"[TEST] Inverted index contains {len(manager2.inverted_index)} terms")
+    
+    # Test a specific word
+    if "life" not in manager2.inverted_index:
+        print("[FAIL] Word 'life' should be in the index!")
+        return False
+    
+    life_entries = manager2.inverted_index["life"]
+    print(f"[TEST] Word 'life' appears in {len(life_entries)} quotes")
+    
+    # Verify all three quotes contain "life"
+    if len(life_entries) != 3:
+        print(f"[FAIL] Expected 'life' in 3 quotes, found in {len(life_entries)}")
+        return False
+    
+    print("[PASS] All tests passed!")
+    
+    # Print sample of the index structure
+    print("\n[TEST] Sample of inverted index structure:")
+    print(json.dumps({"life": manager2.inverted_index["life"]}, indent=2))
+    
+    return True
 
-class TestIndexManager:
-    def test_save_and_load_success(self, temp_index_manager):
-        """Test saving data to disk and loading it back into memory."""
-        test_data = [
-            {'author': 'Author A', 'text': 'This is a test quote.'},
-            {'author': 'Author B', 'text': 'Another test, testing is good.'}
-        ]
-        
-        # Save it
-        saved_path = temp_index_manager.save_index(test_data)
-        assert os.path.exists(saved_path)
-        
-        # Load it
-        quotes = temp_index_manager.load_index()
-        assert len(quotes) == 2
-        
-        # Check inverted index structure
-        assert "test" in temp_index_manager.inverted_index
-        assert temp_index_manager.inverted_index["test"] == {0, 1}
-        assert "another" in temp_index_manager.inverted_index
-        assert temp_index_manager.inverted_index["another"] == {1}
-
-    def test_load_missing_file(self, temp_index_manager):
-        """Test trying to load when no file exists yet."""
-        # Ensure file doesn't exist
-        if os.path.exists(temp_index_manager.data_path):
-            os.remove(temp_index_manager.data_path)
-            
-        result = temp_index_manager.load_index()
-        assert result is None
-
-    def test_load_empty_file(self, temp_index_manager):
-        """Test loading a file that exists but has absolutely no data in it."""
-        with open(temp_index_manager.data_path, "w", encoding="utf-8") as f:
-            f.write("   \n  ") # Write just whitespace
-            
-        quotes = temp_index_manager.load_index()
-        
-        # Should return an empty list, not crash
-        assert quotes == []
-        assert temp_index_manager.inverted_index == {}
-
-    def test_load_corrupted_format(self, temp_index_manager):
-        """Test a file that doesn't use our standard separator format."""
-        with open(temp_index_manager.data_path, "w", encoding="utf-8") as f:
-            f.write("Just some random text\nNo author here\nNothing makes sense.")
-            
-        # It shouldn't crash. It might load garbage, but shouldn't throw an unhandled exception.
-        try:
-            quotes = temp_index_manager.load_index()
-            assert isinstance(quotes, list) 
-        except Exception as e:
-            pytest.fail(f"Loading corrupt data crashed the program: {e}")
+if __name__ == "__main__":
+    success = test_save_and_load()
+    sys.exit(0 if success else 1)

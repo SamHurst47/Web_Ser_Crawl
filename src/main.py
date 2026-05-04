@@ -7,7 +7,7 @@ from indexer import IndexManager
 from search import SearchEngine
 
 class SearchToolShell(cmd.Cmd):
-    intro = "QUOTE SEARCH TOOL - CLI v1.0 /n Type 'help' to see available commands."
+    intro = "QUOTE SEARCH TOOL - CLI v1.0\nType 'help' to see available commands."
     prompt = 'search-tool> '
     
     def __init__(self):
@@ -20,11 +20,11 @@ class SearchToolShell(cmd.Cmd):
 
     def help_build(self):
         print("\nUsage: build")
-        print("Description: Crawls the website, indexes quotes, and saves to ../data/index.txt\n")
+        print("Description: Crawls the website, builds the inverted index, and saves to ../data/inverted_index.json\n")
 
     def help_load(self):
         print("\nUsage: load")
-        print("Description: Loads the saved index from the file system into memory.\n")
+        print("Description: Reads the saved inverted index from disk back into memory so you can search without crawling again.\n")
 
     def help_print(self):
         print("\nUsage: print <word>")
@@ -42,7 +42,7 @@ class SearchToolShell(cmd.Cmd):
     # --- COMMAND IMPLEMENTATIONS ---
 
     def do_build(self, arg):
-        """Build the index from the web."""
+        """Crawl the site, build the inverted index, and save to disk."""
         # Explicit warning about the required 6-second politeness delay
         print("[*] Starting crawl. This will take a few moments due to the required 6-second politeness delay between pages...")
         
@@ -54,24 +54,28 @@ class SearchToolShell(cmd.Cmd):
             return
 
         try:
-            # Delegate the file saving to the IndexManager
+            # Build the inverted index and save everything to a single JSON file
             saved_path = self.manager.save_index(results)
-            print(f"[+] Build successful! {len(results)} quotes saved to:\n    {saved_path}")
+            # Auto-load after building
+            self.manager.load_index()
+            self.is_index_loaded = True
+            print(f"[+] Build successful! {len(results)} quotes indexed and saved to:\n    {saved_path}")
         except Exception as e:
             print(f"[-] Critical Error saving file: {e}")
 
     def do_load(self, arg):
-        """Load index from file."""
+        """Read the previously saved inverted index from disk into memory."""
         if self.is_index_loaded:
             print("[-] Error: Load cannot be called twice. The index is already in memory.")
             return
         
+        # Reads inverted_index.json back into self.manager.inverted_index and self.manager.quotes
         data = self.manager.load_index()
-        if data:
-            print(f"[+] Loaded {len(data)} quotes.")
+        if data is not None:
+            print(f"[+] Loaded {len(data)} quotes into memory.")
             self.is_index_loaded = True
         else:
-            print("[-] Load failed. Does ../data/index.txt exist? Please run the 'build' command to create an index if you have not already.")
+            print("[-] Load failed. Has 'build' been run yet? Please run the 'build' command to create an index if you have not already.")
 
     def do_print(self, arg):
         """Print inverted index for a word."""
@@ -82,9 +86,17 @@ class SearchToolShell(cmd.Cmd):
         if not arg:
             self.help_print()
             return
+
         word = arg.strip().lower()
-        ids = self.manager.inverted_index.get(word, [])
-        print(f"Word: '{word}' -> IDs: {list(ids)}")
+        entry = self.manager.inverted_index.get(word, {})
+
+        if not entry:
+            print(f"[-] Word '{word}' not found in index.")
+            return
+
+        print(f"Word: '{word}'")
+        for doc_id, stats in entry.items():
+            print(f"  Quote ID {doc_id} -> frequency: {stats['frequency']}, positions: {stats['positions']}")
 
     def do_find(self, arg):
         """Find quotes containing all words: find word1 word2 ..."""
@@ -104,8 +116,10 @@ class SearchToolShell(cmd.Cmd):
         else:
             print(f"[+] Found {len(matches)} matches:")
             for q_id in matches:
+                quote = self.manager.quotes[int(q_id)]
                 print(f"\n--- Quote ID: {q_id} ---")
-                print(self.manager.quotes[q_id])
+                print(f"Author: {quote['author']}")
+                print(f"Quote: {quote['text']}")
 
     def do_exit(self, arg):
         """Exit the shell."""
