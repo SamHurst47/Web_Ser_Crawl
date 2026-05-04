@@ -1,0 +1,11 @@
+requests
+beautifulsoup4
+lxml
+pytest
+pytest-cov
+pytest-mock
+black
+flake8
+mypy
+pytest-html
+pytest-xdist

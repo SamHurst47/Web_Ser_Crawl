@@ -30,10 +30,22 @@ class QuoteCrawler:
                     break
 
                 for q in quotes:
-                    found_quotes.append({
-                        'author': q.find('small', class_='author').get_text(strip=True),
-                        'text': q.find('span', class_='text').get_text(strip=True)
-                    })
+                    try:
+                        author = q.find('small', class_='author')
+                        text = q.find('span', class_='text')
+
+                        # Skip malformed quote blocks
+                        if not author or not text:
+                            print("    [!] Skipping malformed quote block.")
+                            continue
+
+                        found_quotes.append({
+                            'author': author.get_text(strip=True),
+                            'text': text.get_text(strip=True)
+                        })
+                    except Exception as e:
+                        print(f"    [!] Could not parse one quote block: {e}")
+                        continue
 
                 next_btn = soup.find('li', class_='next')
                 if next_btn and next_btn.find('a'):
@@ -46,7 +58,12 @@ class QuoteCrawler:
                     print("    -> Sleeping for 6 seconds to respect server politeness window...")
                     time.sleep(6)
                     
-            # --- THE PROTECTIVE SHIELD IS BACK ---
+            except requests.exceptions.ConnectionError as e:
+                print(f"[-] Connection error encountered: {e}")
+                break
+            except requests.exceptions.Timeout:
+                print(f"[-] Request timed out for: {current_url}")
+                break
             except requests.exceptions.RequestException as e:
                 print(f"[-] Network error encountered: {e}")
                 break

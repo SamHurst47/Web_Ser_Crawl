@@ -13,17 +13,24 @@ class SearchEngine:
             return []
 
         # 2. Get the starting set from the first word
-        # We use .get(word, set()) to avoid KeyErrors if the word isn't indexed
-        result_set = self.manager.inverted_index.get(query_words[0], set())
+        # Extract doc_ids from the inverted index structure: {"word": {"doc_id": {...}}}
+        if query_words[0] in self.manager.inverted_index:
+            result_set = set(self.manager.inverted_index[query_words[0]].keys())
+        else:
+            return []
 
         # 3. Intersect with sets of all subsequent words
         for word in query_words[1:]:
-            word_set = self.manager.inverted_index.get(word, set())
-            result_set = result_set.intersection(word_set)
+            if word in self.manager.inverted_index:
+                word_set = set(self.manager.inverted_index[word].keys())
+                result_set = result_set.intersection(word_set)
+            else:
+                # If any word is not in the index, no results
+                return []
             
             # Optimization: If the intersection is already empty, stop looking
             if not result_set:
                 break
 
-        # Return a sorted list of IDs
-        return sorted(list(result_set))
+        # Return a sorted list of IDs (convert string IDs to integers for proper sorting)
+        return sorted(list(result_set), key=lambda x: int(x))
