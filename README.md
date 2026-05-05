@@ -305,7 +305,7 @@ Goodbye!
 
 **Run all tests (excluding live tests):**
 ```bash
-pytest tests/ -v
+pytest tests/ -v -m "not live"
 ```
 
 **Run specific test file:**
