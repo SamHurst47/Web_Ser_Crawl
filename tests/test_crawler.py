@@ -1,16 +1,28 @@
+"""
+test_crawler.py - Unit tests for web crawler functionality.
+
+Tests the QuoteCrawler class with mocked HTTP requests to verify
+crawling logic, pagination handling, and error recovery.
+
+Run with: 
+    pytest tests/test_crawler.py -v          # Skip live tests
+    pytest tests/test_crawler.py -v -m live  # Include live tests
+"""
+
 import os
 import sys
 import pytest
 import requests
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-# Add parent directory to path
+# Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.crawler import QuoteCrawler
 
 
-# --- Dummy Data ---
+# === Mock HTML Responses ===
+
 MOCK_HTML = """
 <html>
     <body>
@@ -53,90 +65,112 @@ MOCK_HTML_PAGE_2 = """
 
 
 class DummyResponse:
-    """Mock response object that mimics requests.Response"""
+    """Mock HTTP response object for testing."""
+    
     def __init__(self, text, status_code=200):
+        """
+        Initialize mock response.
+        
+        Args:
+            text (str): HTML content
+            status_code (int): HTTP status code
+        """
         self.text = text
         self.status_code = status_code
 
     def raise_for_status(self):
+        """Raise exception for non-200 status codes."""
         if self.status_code != 200:
             raise requests.exceptions.HTTPError(f"HTTP Error: {self.status_code}")
 
 
 class TestQuoteCrawler:
-    """Test suite for QuoteCrawler with mocked requests"""
+    """Test suite for QuoteCrawler with mocked requests."""
     
     @patch('src.crawler.requests.get')
     @patch('src.crawler.time.sleep')  # Mock sleep to speed up tests
     def test_crawl_success(self, mock_sleep, mock_get):
-        """Test the happy path where the site responds perfectly"""
+        """Test successful crawl with valid HTML."""
         mock_get.return_value = DummyResponse(MOCK_HTML)
 
         crawler = QuoteCrawler("http://fakeurl.com")
         results = crawler.crawl()
         
-        # Verify we got results
-        assert len(results) == 2, f"Expected 2 results, got {len(results)}"
+        # Verify correct number of results
+        assert len(results) == 2
+        
+        # Verify first quote
         assert results[0]['author'] == "Author A"
         assert results[0]['text'] == '"Test quote one."'
+        
+        # Verify second quote
         assert results[1]['author'] == "Author B"
         assert results[1]['text'] == '"Test quote two."'
 
     @patch('src.crawler.requests.get')
     def test_crawl_network_error(self, mock_get):
-        """Test handling of standard network exceptions"""
+        """Test handling of network exceptions."""
         mock_get.side_effect = requests.exceptions.RequestException("Network down")
         
         crawler = QuoteCrawler("http://fakeurl.com")
         results = crawler.crawl()
         
+        # Should return empty list on network error
         assert results == []
 
     @patch('src.crawler.requests.get')
     def test_crawl_timeout(self, mock_get):
-        """Test crawler handles timeouts gracefully"""
+        """Test crawler handles timeouts gracefully."""
         mock_get.side_effect = requests.exceptions.Timeout("Server timed out")
         
         crawler = QuoteCrawler("http://fakeurl.com")
         results = crawler.crawl()
         
+        # Should return empty list on timeout
         assert results == []
 
     @patch('src.crawler.requests.get')
     def test_crawl_malformed_html(self, mock_get):
-        """Test handling of HTML without expected quote structure"""
-        mock_get.return_value = DummyResponse("<html><body><h1>Site Under Construction</h1></body></html>")
+        """Test handling of HTML without expected quote structure."""
+        malformed_html = "<html><body><h1>Site Under Construction</h1></body></html>"
+        mock_get.return_value = DummyResponse(malformed_html)
 
         crawler = QuoteCrawler("http://fakeurl.com")
         results = crawler.crawl()
         
+        # Should return empty list when no quotes found
         assert results == []
         
     @patch('src.crawler.requests.get')
     def test_crawl_404_not_found(self, mock_get):
-        """Test HTTP error codes like 404"""
+        """Test HTTP 404 error handling."""
         mock_get.return_value = DummyResponse("Not Found", status_code=404)
         
         crawler = QuoteCrawler("http://fakeurl.com/does-not-exist")
         results = crawler.crawl()
         
+        # Should return empty list on 404
         assert results == []
 
     @patch('src.crawler.requests.get')
     def test_crawl_500_server_error(self, mock_get):
-        """Test handling of server errors"""
-        mock_get.return_value = DummyResponse("Internal Server Error", status_code=500)
+        """Test handling of server errors (5xx)."""
+        mock_get.return_value = DummyResponse(
+            "Internal Server Error",
+            status_code=500
+        )
         
         crawler = QuoteCrawler("http://fakeurl.com")
         results = crawler.crawl()
         
+        # Should return empty list on server error
         assert results == []
 
     @patch('src.crawler.requests.get')
     @patch('src.crawler.time.sleep')
     def test_crawl_pagination(self, mock_sleep, mock_get):
-        """Test that crawler follows pagination links"""
-        # Set up mock to return different pages
+        """Test that crawler follows pagination links."""
+        # Mock returns different pages in sequence
         mock_get.side_effect = [
             DummyResponse(MOCK_HTML_WITH_PAGINATION),
             DummyResponse(MOCK_HTML_PAGE_2)
@@ -149,21 +183,27 @@ class TestQuoteCrawler:
         assert len(results) == 2
         assert results[0]['text'] == '"First page quote."'
         assert results[1]['text'] == '"Second page quote."'
+        
+        # Should have made 2 requests
         assert mock_get.call_count == 2
 
     @patch('src.crawler.requests.get')
     def test_crawl_connection_error(self, mock_get):
-        """Test handling of connection failures"""
-        mock_get.side_effect = requests.exceptions.ConnectionError("Failed to connect")
+        """Test handling of connection failures."""
+        mock_get.side_effect = requests.exceptions.ConnectionError(
+            "Failed to connect"
+        )
         
         crawler = QuoteCrawler("http://fakeurl.com")
         results = crawler.crawl()
         
+        # Should return empty list on connection error
         assert results == []
 
     @patch('src.crawler.requests.get')
     def test_crawl_empty_quotes(self, mock_get):
-        """Test handling of page with quote divs but missing required fields"""
+        """Test handling of malformed quote blocks."""
+        # HTML with one valid quote and two malformed quotes
         html_missing_fields = """
         <html><body>
             <div class="quote">
@@ -188,23 +228,50 @@ class TestQuoteCrawler:
         assert results[0]['text'] == '"Valid quote"'
         assert results[0]['author'] == 'Valid Author'
 
+    def test_page_number_extraction(self):
+        """Test _get_page_number helper method."""
+        crawler = QuoteCrawler()
+        
+        # Base URL should be page 1
+        assert crawler._get_page_number("https://quotes.toscrape.com/") == 1
+        
+        # Page URLs should extract number correctly
+        assert crawler._get_page_number("https://quotes.toscrape.com/page/2/") == 2
+        assert crawler._get_page_number("https://quotes.toscrape.com/page/10/") == 10
+        assert crawler._get_page_number("https://quotes.toscrape.com/page/100/") == 100
+
 
 @pytest.mark.live
 class TestQuoteCrawlerLive:
-    """Live tests that require internet connection"""
+    """Live tests that require internet connection."""
     
     def test_crawl_real_site(self):
-        """Test crawling the actual quotes.toscrape.com site"""
+        """Test crawling the actual quotes.toscrape.com site."""
         crawler = QuoteCrawler("https://quotes.toscrape.com")
         results = crawler.crawl()
         
         # The real site should have quotes
         assert len(results) > 0, "Live site should return quotes"
         
-        # Verify structure
+        # Verify structure of first result
+        assert 'page_number' in results[0]
+        assert 'url' in results[0]
         assert 'author' in results[0]
         assert 'text' in results[0]
+        
+        # Verify data types
         assert isinstance(results[0]['author'], str)
         assert isinstance(results[0]['text'], str)
         assert len(results[0]['author']) > 0
         assert len(results[0]['text']) > 0
+        
+        # First page should be page 1
+        assert results[0]['page_number'] == 1
+        
+        # Should crawl multiple pages
+        page_numbers = set(r['page_number'] for r in results)
+        assert len(page_numbers) > 1, "Should crawl multiple pages"
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
