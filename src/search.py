@@ -1,5 +1,5 @@
 import re
-from spellcheck import get_query_suggestions
+from src.spellcheck import get_query_suggestions
 
 class SearchEngine:
     def __init__(self, index_manager):
