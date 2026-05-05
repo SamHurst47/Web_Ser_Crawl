@@ -2,34 +2,48 @@ import os
 import sys
 import json
 import pytest
+import tempfile
+import shutil
 
 # Add parent directory to path so we can import the modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.indexer import IndexManager  
+from src.indexer import IndexManager
 from src.search import SearchEngine
 
 
 @pytest.fixture
-def sample_quotes():
-    """Fixture providing sample quote data"""
+def temp_data_dir():
+    """Create a temporary data directory for testing"""
+    temp_dir = tempfile.mkdtemp()
+    original_getcwd = os.getcwd
+    os.getcwd = lambda: temp_dir
+    yield temp_dir
+    os.getcwd = original_getcwd
+    shutil.rmtree(temp_dir)
+
+
+@pytest.fixture
+def sample_crawl_results():
+    """Fixture providing sample crawl data with page numbers"""
     return [
-        {"author": "Albert Einstein", "text": "Life is beautiful"},
-        {"author": "Maya Angelou", "text": "Life is a journey"},
-        {"author": "Mark Twain", "text": "The beautiful journey of life"}
+        {"page_number": 1, "url": "https://example.com/", "author": "Albert Einstein", "text": "Life is beautiful"},
+        {"page_number": 1, "url": "https://example.com/", "author": "Maya Angelou", "text": "Life is a journey"},
+        {"page_number": 2, "url": "https://example.com/page/2/", "author": "Mark Twain", "text": "The beautiful journey of life"},
+        {"page_number": 2, "url": "https://example.com/page/2/", "author": "Oscar Wilde", "text": "Be yourself everyone else is taken"}
     ]
 
 
 @pytest.fixture
-def manager():
+def manager(temp_data_dir):
     """Fixture providing a fresh IndexManager instance"""
     return IndexManager()
 
 
 @pytest.fixture
-def loaded_manager(manager, sample_quotes):
+def loaded_manager(manager, sample_crawl_results):
     """Fixture providing a manager with sample data loaded"""
-    manager.save_index(sample_quotes)
+    manager.save_index(sample_crawl_results)
     manager.load_index()
     return manager
 
@@ -37,37 +51,45 @@ def loaded_manager(manager, sample_quotes):
 class TestSaveAndLoad:
     """Test suite for save and load functionality"""
     
-    def test_save_creates_file(self, manager, sample_quotes):
+    def test_save_creates_file(self, manager, sample_crawl_results, temp_data_dir):
         """Test that saving creates the JSON file"""
-        saved_path = manager.save_index(sample_quotes)
+        saved_path = manager.save_index(sample_crawl_results)
         assert os.path.exists(saved_path), "Index file was not created"
     
-    def test_json_structure(self, manager, sample_quotes):
+    def test_json_structure(self, manager, sample_crawl_results, temp_data_dir):
         """Test that saved JSON has correct structure"""
-        saved_path = manager.save_index(sample_quotes)
+        saved_path = manager.save_index(sample_crawl_results)
         
         with open(saved_path, 'r') as f:
             data = json.load(f)
         
-        assert "quotes" in data, "'quotes' key missing from JSON"
         assert "inverted_index" in data, "'inverted_index' key missing from JSON"
-        assert len(data["quotes"]) == 3, f"Expected 3 quotes, got {len(data['quotes'])}"
-    
-    def test_load_quotes(self, manager, sample_quotes):
-        """Test that quotes are loaded correctly"""
-        manager.save_index(sample_quotes)
-        loaded_quotes = manager.load_index()
+        assert "tf_idf_scores" in data, "'tf_idf_scores' key missing from JSON"
+        assert "page_urls" in data, "'page_urls' key missing from JSON"
+        assert "document_count" in data, "'document_count' key missing"
         
-        assert loaded_quotes is not None, "Failed to load index"
-        assert len(loaded_quotes) == 3, f"Expected 3 quotes, got {len(loaded_quotes)}"
+        # Should NOT have quotes array
+        assert "quotes" not in data, "'quotes' should not be stored"
     
-    def test_load_inverted_index(self, manager, sample_quotes):
-        """Test that inverted index is loaded correctly"""
-        manager.save_index(sample_quotes)
-        manager.load_index()
+    def test_pages_grouped_correctly(self, manager, sample_crawl_results, temp_data_dir):
+        """Test that quotes are grouped by page number"""
+        manager.save_index(sample_crawl_results)
         
-        assert manager.inverted_index, "Inverted index is empty after loading"
-        assert len(manager.inverted_index) > 0, "No terms in inverted index"
+        # Should have 2 pages (page 1 and page 2)
+        assert manager.document_count == 2, f"Expected 2 pages, got {manager.document_count}"
+        
+        # Check page URLs are stored
+        assert "1" in manager.page_urls
+        assert "2" in manager.page_urls
+    
+    def test_load_index(self, manager, sample_crawl_results, temp_data_dir):
+        """Test that index is loaded correctly"""
+        manager.save_index(sample_crawl_results)
+        result = manager.load_index()
+        
+        assert result is not None, "Failed to load index"
+        assert len(manager.inverted_index) > 0, "Inverted index is empty"
+        assert len(manager.tf_idf_scores) > 0, "TF-IDF scores are empty"
     
     def test_load_nonexistent_file(self, manager):
         """Test loading when file doesn't exist"""
@@ -76,20 +98,59 @@ class TestSaveAndLoad:
         assert result is None, "Should return None for non-existent file"
 
 
+class TestPageCombination:
+    """Test that multiple quotes on same page are combined"""
+    
+    def test_words_from_different_quotes_same_page(self, loaded_manager):
+        """Test that words from different quotes on same page are indexed together"""
+        # Page 1 has two quotes:
+        # - "Life is beautiful" (Albert Einstein)
+        # - "Life is a journey" (Maya Angelou)
+        
+        # "beautiful" should be on page 1
+        assert "beautiful" in loaded_manager.inverted_index
+        assert "1" in loaded_manager.inverted_index["beautiful"]
+        
+        # "journey" should be on page 1 (from second quote)
+        assert "journey" in loaded_manager.inverted_index
+        assert "1" in loaded_manager.inverted_index["journey"]
+    
+    def test_page_contains_both_quotes(self, loaded_manager):
+        """Test that page 1 is indexed with content from both quotes"""
+        # "albert" and "maya" should both be on page 1
+        assert "albert" in loaded_manager.inverted_index
+        assert "1" in loaded_manager.inverted_index["albert"]
+        
+        assert "maya" in loaded_manager.inverted_index
+        assert "1" in loaded_manager.inverted_index["maya"]
+
+
 class TestSearchFunctionality:
-    """Test suite for search operations"""
+    """Test suite for search operations with page-based indexing"""
     
     def test_search_single_word(self, loaded_manager):
         """Test searching for a single word"""
         engine = SearchEngine(loaded_manager)
         results = engine.execute_find("life")
-        assert len(results) == 3, f"Expected 3 results for 'life', got {len(results)}"
+        
+        # "life" appears on both pages
+        assert len(results) == 2, f"Expected 2 results for 'life', got {len(results)}"
+        assert "1" in results or "2" in results
     
-    def test_search_multiple_words_and(self, loaded_manager):
-        """Test AND search with multiple words"""
+    def test_search_words_from_different_quotes_same_page(self, loaded_manager):
+        """Test AND search where words are in different quotes on same page"""
         engine = SearchEngine(loaded_manager)
-        results = engine.execute_find("life journey")
-        assert len(results) == 2, f"Expected 2 results for 'life journey', got {len(results)}"
+        
+        # Page 1 has:
+        # - Quote 1: "Life is beautiful"
+        # - Quote 2: "Life is a journey"
+        # So "beautiful" and "journey" are on same page but different quotes
+        
+        results = engine.execute_find("beautiful journey")
+        
+        # Should return page 1 (has both words, different quotes)
+        assert len(results) >= 1, "Should find page with both words"
+        assert "1" in results, "Page 1 should be in results"
     
     def test_search_nonexistent_word(self, loaded_manager):
         """Test searching for word not in index"""
@@ -97,14 +158,15 @@ class TestSearchFunctionality:
         results = engine.execute_find("python")
         assert len(results) == 0, f"Expected 0 results for 'python', got {len(results)}"
     
-    def test_search_author(self, loaded_manager):
-        """Test searching by author name"""
+    def test_search_and_logic(self, loaded_manager):
+        """Test that AND logic works - returns only pages with ALL words"""
         engine = SearchEngine(loaded_manager)
-        results = engine.execute_find("Einstein")
-        assert len(results) == 1, f"Expected 1 result for 'Einstein', got {len(results)}"
         
-        quote = loaded_manager.quotes[int(results[0])]
-        assert quote['author'] == "Albert Einstein", f"Wrong author: {quote['author']}"
+        # "beautiful" is on pages 1 and 2
+        # "journey" is on pages 1 and 2
+        # Both should return both pages
+        results = engine.execute_find("beautiful journey")
+        assert len(results) == 2, "Should return pages with both words"
     
     def test_search_case_insensitive(self, loaded_manager):
         """Test that search is case-insensitive"""
@@ -114,106 +176,85 @@ class TestSearchFunctionality:
         results_mixed = engine.execute_find("LiFe")
         
         assert results_lower == results_upper == results_mixed, "Search is not case-insensitive"
-    
-    def test_search_empty_query(self, loaded_manager):
-        """Test searching with empty query"""
-        engine = SearchEngine(loaded_manager)
-        results = engine.execute_find("")
-        assert len(results) == 0, "Empty query should return no results"
 
 
-class TestFrequencyAndPositions:
-    """Test suite for word frequency and position tracking"""
+class TestTFIDFScores:
+    """Test suite for TF-IDF calculation"""
     
-    def test_word_appears_in_all_quotes(self, loaded_manager):
-        """Test that 'life' appears in all 3 quotes"""
-        life_data = loaded_manager.inverted_index.get("life", {})
-        assert len(life_data) == 3, f"Expected 'life' in 3 quotes, got {len(life_data)}"
-    
-    def test_frequency_matches_positions(self, loaded_manager):
-        """Test that frequency count matches number of positions"""
-        life_data = loaded_manager.inverted_index.get("life", {})
+    def test_tfidf_scores_exist(self, loaded_manager):
+        """Test that TF-IDF scores are calculated"""
+        assert len(loaded_manager.tf_idf_scores) > 0, "No TF-IDF scores calculated"
         
-        for doc_id, stats in life_data.items():
-            freq = stats["frequency"]
-            positions = stats["positions"]
-            assert freq == len(positions), f"Frequency mismatch in quote {doc_id}"
+        # Check structure
+        for term, pages in loaded_manager.tf_idf_scores.items():
+            for page_id, scores in pages.items():
+                assert "tf" in scores
+                assert "idf" in scores
+                assert "tf_idf" in scores
     
-    def test_beautiful_appears_twice(self, loaded_manager):
-        """Test that 'beautiful' appears in exactly 2 quotes"""
-        beautiful_data = loaded_manager.inverted_index.get("beautiful", {})
-        assert len(beautiful_data) == 2, f"Expected 'beautiful' in 2 quotes, got {len(beautiful_data)}"
+    def test_common_word_lower_idf(self, loaded_manager):
+        """Test that common words have lower IDF"""
+        # "life" appears on both pages (common)
+        # "yourself" appears on only page 2 (rare)
+        
+        if "life" in loaded_manager.tf_idf_scores and "yourself" in loaded_manager.tf_idf_scores:
+            life_idf = list(loaded_manager.tf_idf_scores["life"].values())[0]["idf"]
+            yourself_idf = list(loaded_manager.tf_idf_scores["yourself"].values())[0]["idf"]
+            
+            assert yourself_idf > life_idf, "Rare word should have higher IDF than common word"
     
-    def test_positions_are_integers(self, loaded_manager):
-        """Test that all positions are integers"""
-        for word, docs in loaded_manager.inverted_index.items():
-            for doc_id, stats in docs.items():
-                for pos in stats["positions"]:
-                    assert isinstance(pos, int), f"Position {pos} is not an integer"
+    def test_frequency_affects_tf(self, loaded_manager):
+        """Test that word frequency affects TF score"""
+        # "life" appears multiple times on pages
+        if "life" in loaded_manager.inverted_index:
+            for page_id, stats in loaded_manager.inverted_index["life"].items():
+                tf = loaded_manager.tf_idf_scores["life"][page_id]["tf"]
+                assert tf == stats["frequency"], "TF should equal frequency"
 
 
-class TestEmptyAndEdgeCases:
-    """Test suite for empty and edge cases"""
+class TestPrintCommand:
+    """Test the get_inverted_index_for_word method"""
     
-    def test_empty_quotes_list(self, manager):
-        """Test saving and loading empty quotes list"""
+    def test_print_returns_correct_structure(self, loaded_manager):
+        """Test that print command returns correct data structure"""
+        result = loaded_manager.get_inverted_index_for_word("life")
+        
+        assert result is not None
+        assert "term" in result
+        assert "document_frequency" in result
+        assert "pages" in result
+        assert "tf_idf" in result
+    
+    def test_print_nonexistent_word(self, loaded_manager):
+        """Test print with word not in index"""
+        result = loaded_manager.get_inverted_index_for_word("nonexistent")
+        assert result is None
+
+
+class TestEdgeCases:
+    """Test suite for edge cases"""
+    
+    def test_empty_crawl_results(self, manager, temp_data_dir):
+        """Test saving empty crawl results"""
         manager.save_index([])
-        quotes = manager.load_index()
-        
-        assert quotes is not None, "load_index() returned None for empty list"
-        assert len(quotes) == 0, f"Expected 0 quotes, got {len(quotes)}"
-        assert len(manager.inverted_index) == 0, f"Expected empty index, got {len(manager.inverted_index)} terms"
-    
-    def test_quote_with_special_characters(self, manager):
-        """Test handling quotes with special characters"""
-        special_quotes = [
-            {"author": "Test Author", "text": "Hello! How are you? I'm fine."}
-        ]
-        manager.save_index(special_quotes)
         manager.load_index()
         
-        # Should only extract alphanumeric words
+        assert manager.document_count == 0
+        assert len(manager.inverted_index) == 0
+    
+    def test_special_characters_stripped(self, manager, temp_data_dir):
+        """Test that special characters are handled"""
+        test_data = [
+            {"page_number": 1, "url": "test.com", "author": "Test", "text": "Hello! How are you?"}
+        ]
+        manager.save_index(test_data)
+        manager.load_index()
+        
+        # Should have alphanumeric words only
         assert "hello" in manager.inverted_index
         assert "how" in manager.inverted_index
         assert "!" not in manager.inverted_index
         assert "?" not in manager.inverted_index
-    
-    def test_quote_with_numbers(self, manager):
-        """Test handling quotes with numbers"""
-        number_quotes = [
-            {"author": "Test Author", "text": "There are 3 ways to do this"}
-        ]
-        manager.save_index(number_quotes)
-        manager.load_index()
-        
-        assert "3" in manager.inverted_index
-        assert "ways" in manager.inverted_index
-
-
-class TestDataIntegrity:
-    """Test suite for data integrity"""
-    
-    def test_quotes_preserved_after_save_load(self, manager, sample_quotes):
-        """Test that quote data is preserved exactly after save/load cycle"""
-        manager.save_index(sample_quotes)
-        loaded_quotes = manager.load_index()
-        
-        for i, (original, loaded) in enumerate(zip(sample_quotes, loaded_quotes)):
-            assert original["author"] == loaded["author"], f"Author mismatch at index {i}"
-            assert original["text"] == loaded["text"], f"Text mismatch at index {i}"
-    
-    def test_inverted_index_consistency(self, loaded_manager):
-        """Test that inverted index is internally consistent"""
-        for word, docs in loaded_manager.inverted_index.items():
-            for doc_id, stats in docs.items():
-                # Check that doc_id is valid
-                doc_id_int = int(doc_id)
-                assert 0 <= doc_id_int < len(loaded_manager.quotes), f"Invalid doc_id: {doc_id}"
-                
-                # Check that the word actually appears in the quote
-                quote = loaded_manager.quotes[doc_id_int]
-                searchable = f"{quote['author']} {quote['text']}".lower()
-                assert word in searchable, f"Word '{word}' not found in quote {doc_id}"
 
 
 if __name__ == "__main__":

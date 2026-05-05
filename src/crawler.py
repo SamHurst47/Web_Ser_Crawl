@@ -1,13 +1,21 @@
 import requests
 from bs4 import BeautifulSoup
 import time
+import re
 
 class QuoteCrawler:
     def __init__(self, base_url="https://quotes.toscrape.com"):
         self.base_url = base_url
 
+    def _get_page_number(self, url):
+        """Extract page number from URL. Returns 1 for base page."""
+        match = re.search(r'/page/(\d+)/', url)
+        if match:
+            return int(match.group(1))
+        return 1  # Base URL is page 1
+
     def crawl(self):
-        """Navigates the site, extracts quote data, and enforces politeness."""
+        """Navigates the site, extracts quote data with page numbers, and enforces politeness."""
         found_quotes = []
         current_url = self.base_url
         
@@ -29,6 +37,9 @@ class QuoteCrawler:
                     print("[-] No quotes found on this page. Stopping crawl.")
                     break
 
+                # Get page number from URL
+                page_number = self._get_page_number(current_url)
+
                 for q in quotes:
                     try:
                         author = q.find('small', class_='author')
@@ -40,6 +51,8 @@ class QuoteCrawler:
                             continue
 
                         found_quotes.append({
+                            'page_number': page_number,  # Use actual page number
+                            'url': current_url,
                             'author': author.get_text(strip=True),
                             'text': text.get_text(strip=True)
                         })
