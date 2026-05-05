@@ -5,21 +5,23 @@ class SearchEngine:
         self.manager = index_manager
 
     def execute_find(self, query):
-        # 1. Clean the query and split into individual words
-        # This handles "good friends" -> ["good", "friends"]
+        """
+        Find documents containing the query words using TF-IDF ranking.
+        Returns documents ranked by relevance (sum of TF-IDF scores).
+        """
+        # Clean the query and split into individual words
         query_words = re.findall(r'\w+', query.lower())
         
         if not query_words:
             return []
 
-        # 2. Get the starting set from the first word
-        # Extract doc_ids from the inverted index structure: {"word": {"doc_id": {...}}}
+        # Get all documents containing ALL query words (AND logic)
         if query_words[0] in self.manager.inverted_index:
             result_set = set(self.manager.inverted_index[query_words[0]].keys())
         else:
             return []
 
-        # 3. Intersect with sets of all subsequent words
+        # Intersect with documents containing all other query words
         for word in query_words[1:]:
             if word in self.manager.inverted_index:
                 word_set = set(self.manager.inverted_index[word].keys())
@@ -28,9 +30,33 @@ class SearchEngine:
                 # If any word is not in the index, no results
                 return []
             
-            # Optimization: If the intersection is already empty, stop looking
+            # Optimization: If the intersection is already empty, stop
             if not result_set:
                 break
 
-        # Return a sorted list of IDs (convert string IDs to integers for proper sorting)
-        return sorted(list(result_set), key=lambda x: int(x))
+        if not result_set:
+            return []
+
+        # Calculate relevance score for each document
+        # Score = sum of TF-IDF scores for all query terms
+        scored_results = []
+        
+        for doc_id in result_set:
+            score = 0.0
+            
+            # Sum TF-IDF scores for all query words in this document
+            for word in query_words:
+                if word in self.manager.tf_idf_scores:
+                    if doc_id in self.manager.tf_idf_scores[word]:
+                        score += self.manager.tf_idf_scores[word][doc_id]["tf_idf"]
+            
+            scored_results.append({
+                "doc_id": doc_id,
+                "score": score
+            })
+        
+        # Sort by score (descending - highest relevance first)
+        scored_results.sort(key=lambda x: x["score"], reverse=True)
+        
+        # Return just the document IDs in ranked order
+        return [result["doc_id"] for result in scored_results]
