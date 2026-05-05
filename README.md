@@ -131,59 +131,73 @@ search-tool> load
 [+] Loaded 100 quotes into memory.
 ```
 
+ 
 #### `print` - Inspect Index Entry
-
+ 
 **Usage:**
 ```
 search-tool> print <word>
 ```
-
+ 
 **Example Output:**
 ```
 search-tool> print life
-
-Word: 'life'
-  Quote ID 0 -> frequency: 1, positions: [2]
-  Quote ID 5 -> frequency: 2, positions: [3, 15]
-  Quote ID 12 -> frequency: 1, positions: [7]
+ 
+Inverted Index for: 'life'
+Document Frequency: 3 (appears in 3 pages)
+ 
+Page Details:
+--------------------------------------------------------------------------------
+Page 10
+  URL: https://quotes.toscrape.com/page/10/
+  Term Frequency (TF): 3
+  Positions: [2, 7, 15]
+  IDF: 0.6931
+  TF-IDF Score: 2.0794
+ 
+Page 5
+  URL: https://quotes.toscrape.com/page/5/
+  Term Frequency (TF): 1
+  Positions: [8]
+  IDF: 0.6931
+  TF-IDF Score: 0.6931
+ 
+Page 2
+  URL: https://quotes.toscrape.com/page/2/
+  Term Frequency (TF): 1
+  Positions: [3]
+  IDF: 0.6931
+  TF-IDF Score: 0.6931
 ```
-
+ 
 #### `find` - Search for Quotes
-
+ 
 **Usage:**
 ```
 search-tool> find <query>
 ```
-
+ 
 **Example Output:**
 ```
 search-tool> find life
-
-[+] Found 15 matches:
-
---- Quote ID: 0 ---
-Author: Albert Einstein
-Quote: Life is what happens when you're busy making other plans.
-
---- Quote ID: 5 ---
-Author: Maya Angelou
-Quote: There is no greater agony than bearing an untold story inside you.
+ 
+[+] Found 15 pages (ranked by relevance):
+[1] Page 10: https://quotes.toscrape.com/page/10/
+[2] Page 5: https://quotes.toscrape.com/page/5/
+[3] Page 2: https://quotes.toscrape.com/page/2/
+[4] Page 7: https://quotes.toscrape.com/page/7/
+[5] Page 1: https://quotes.toscrape.com/
 ...
 ```
-
+ 
 **Multiple Word Search:**
 ```
 search-tool> find good friends
-
-[+] Found 2 matches:
-
---- Quote ID: 23 ---
-Author: Elbert Hubbard
-Quote: A friend is someone who knows all about you and still loves you.
-
---- Quote ID: 47 ---
-Author: Og Mandino
-Quote: Good friends, good books, and a sleepy conscience: this is the ideal life.
+ 
+[+] Found 3 pages (ranked by relevance):
+[1] Page 10: https://quotes.toscrape.com/page/10/
+[2] Page 5: https://quotes.toscrape.com/page/5/
+[3] Page 2: https://quotes.toscrape.com/page/2/
 ```
 
 #### `help` - Show Available Commands
@@ -214,47 +228,75 @@ Goodbye!
 
 ### Complete Usage Example
 
+
 ```bash
 # Start the application
 $ python -m src.main
-
+ 
 QUOTE SEARCH TOOL - CLI v1.0
 Type 'help' to see available commands.
-
+ 
 # First time: build the index
 search-tool> build
 [*] Starting crawl...
-[+] Build successful! 100 quotes indexed
-
-# Search for quotes about life
+[*] Fetching: https://quotes.toscrape.com
+    -> Sleeping for 6 seconds to respect server politeness window...
+[*] Fetching: https://quotes.toscrape.com/page/2/
+    -> Sleeping for 6 seconds to respect server politeness window...
+[+] Build successful! Indexed 100 pages and saved to:
+    /path/to/data/inverted_index.json
+[+] Note: Only the inverted index is stored, not the full page content.
+ 
+# Search for pages about life
 search-tool> find life
-[+] Found 15 matches:
---- Quote ID: 0 ---
-Author: Albert Einstein
-Quote: Life is beautiful
+[+] Found 15 pages (ranked by relevance):
+[1] Page 10: https://quotes.toscrape.com/page/10/
+[2] Page 5: https://quotes.toscrape.com/page/5/
+[3] Page 2: https://quotes.toscrape.com/page/2/
+[4] Page 7: https://quotes.toscrape.com/page/7/
 ...
-
+ 
 # Search for multiple words
 search-tool> find good friends
-[+] Found 2 matches:
-...
-
+[+] Found 3 pages (ranked by relevance):
+[1] Page 10: https://quotes.toscrape.com/page/10/
+[2] Page 5: https://quotes.toscrape.com/page/5/
+[3] Page 2: https://quotes.toscrape.com/page/2/
+ 
 # Inspect a word in the index
 search-tool> print life
-Word: 'life'
-  Quote ID 0 -> frequency: 1, positions: [2]
-  Quote ID 5 -> frequency: 2, positions: [3, 15]
-
+ 
+Inverted Index for: 'life'
+Document Frequency: 15 (appears in 15 pages)
+ 
+Page Details:
+--------------------------------------------------------------------------------
+Page 10
+  URL: https://quotes.toscrape.com/page/10/
+  Term Frequency (TF): 3
+  Positions: [2, 7, 15]
+  IDF: 0.6931
+  TF-IDF Score: 2.0794
+ 
+Page 5
+  URL: https://quotes.toscrape.com/page/5/
+  Term Frequency (TF): 1
+  Positions: [8]
+  IDF: 0.6931
+  TF-IDF Score: 0.6931
+...
+ 
 # Search by author
 search-tool> find einstein
-[+] Found 3 matches:
-...
-
+[+] Found 3 pages (ranked by relevance):
+[1] Page 1: https://quotes.toscrape.com/
+[2] Page 4: https://quotes.toscrape.com/page/4/
+[3] Page 8: https://quotes.toscrape.com/page/8/
+ 
 # Exit
 search-tool> exit
 Goodbye!
 ```
-
 ---
 
 ## Testing
@@ -286,23 +328,23 @@ pytest tests/ -v -m live
 
 ### Test Suite
 
-The project includes **42 comprehensive tests**:
+The project includes **41 comprehensive tests**:
 
-#### test_indexer.py (20 tests)
+#### test_indexer.py 
 - Save and load functionality
 - JSON structure validation
 - Search integration tests
 - Frequency and position tracking
 - Edge cases and data integrity
 
-#### test_search.py (11 tests)
+#### test_search.py 
 - Single word search
 - Multi-word AND search
 - Case insensitivity
 - Special character handling
 - Empty queries
 
-#### test_crawler.py (12 tests)
+#### test_crawler.py
 - HTTP request mocking
 - Error handling (timeouts, 404s, 500s)
 - Pagination following
@@ -322,7 +364,7 @@ tests/test_crawler.py::TestQuoteCrawler::test_crawl_network_error PASSED   [ 4%]
 ...
 tests/test_search.py::TestSearchEngine::test_common_word_search PASSED     [100%]
 
-======================== 41 passed, 1 deselected in 2.34s ========================
+======================== 40 passed, 1 deselected in 2.34s ========================
 ```
 
 ---
