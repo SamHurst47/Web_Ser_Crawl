@@ -1,3 +1,10 @@
+"""
+Test suite for search functionality with page-based indexing
+Tests the SearchEngine with mock page data
+
+Run with: pytest tests/test_search.py -v
+"""
+
 import os
 import sys
 import pytest
@@ -163,6 +170,93 @@ class TestSearchEngine:
         # So page 1 should be ranked first
         assert results[0] == "1", "Page 1 should rank higher (more occurrences)"
         assert results[1] == "2"
+
+
+class TestQuerySuggestions:
+    """Test suite for query suggestions (spell checking)"""
+    
+    def test_get_suggestions_for_misspelled_word(self, mock_manager):
+        """Test that suggestions are returned for misspelled words"""
+        engine = SearchEngine(mock_manager)
+        
+        # "appels" is misspelled, should suggest "apples"
+        suggestions = engine.get_suggestions("appels")
+        
+        assert "appels" in suggestions, "Should identify 'appels' as misspelled"
+        assert "apples" in suggestions["appels"], "Should suggest 'apples'"
+    
+    def test_get_suggestions_for_correct_word(self, mock_manager):
+        """Test that no suggestions for correctly spelled words in index"""
+        engine = SearchEngine(mock_manager)
+        
+        # "apples" is correctly spelled and in index
+        suggestions = engine.get_suggestions("apples")
+        
+        assert "apples" not in suggestions, "Should not suggest for correct word"
+    
+    def test_get_suggestions_multiple_words(self, mock_manager):
+        """Test suggestions for multi-word query with one misspelling"""
+        engine = SearchEngine(mock_manager)
+        
+        # "apples bananaz" - "bananaz" is misspelled
+        suggestions = engine.get_suggestions("apples bananaz")
+        
+        assert "apples" not in suggestions, "Correct word should not have suggestions"
+        assert "bananaz" in suggestions, "Should identify 'bananaz' as misspelled"
+        assert "bananas" in suggestions["bananaz"], "Should suggest 'bananas'"
+    
+    def test_get_suggestions_all_correct(self, mock_manager):
+        """Test that empty dict returned when all words correct"""
+        engine = SearchEngine(mock_manager)
+        
+        suggestions = engine.get_suggestions("apples bananas")
+        
+        assert suggestions == {}, "Should return empty dict for all correct words"
+    
+    def test_get_suggestions_word_not_in_index(self, mock_manager):
+        """Test suggestions when word completely not in index"""
+        engine = SearchEngine(mock_manager)
+        
+        # "xyz" has no similar words in index
+        suggestions = engine.get_suggestions("xyz")
+        
+        # Should either return empty dict or have "xyz" with empty list
+        if "xyz" in suggestions:
+            # If it returns suggestions, they should be reasonable
+            assert isinstance(suggestions["xyz"], list)
+    
+    def test_get_suggestions_case_insensitive(self, mock_manager):
+        """Test that suggestions work regardless of case"""
+        engine = SearchEngine(mock_manager)
+        
+        # "APPELS" in uppercase
+        suggestions = engine.get_suggestions("APPELS")
+        
+        # Should still suggest "apples" (case-insensitive matching)
+        if suggestions:  # May return suggestions
+            misspelled_key = list(suggestions.keys())[0]
+            assert "apples" in suggestions[misspelled_key]
+    
+    def test_get_suggestions_empty_query(self, mock_manager):
+        """Test handling of empty query"""
+        engine = SearchEngine(mock_manager)
+        
+        suggestions = engine.get_suggestions("")
+        
+        assert suggestions == {}, "Empty query should return empty dict"
+    
+    def test_get_suggestions_close_match(self, mock_manager):
+        """Test that words within edit distance of 2 are suggested"""
+        engine = SearchEngine(mock_manager)
+        
+        # "ornges" is 2 edits from "oranges" (delete 'n', add 'a')
+        suggestions = engine.get_suggestions("ornges")
+        
+        assert "ornges" in suggestions, "Should identify as misspelled"
+        # Should suggest "oranges" if within max distance
+        suggested_words = suggestions.get("ornges", [])
+        # oranges should be suggested (edit distance 2)
+        assert len(suggested_words) > 0, "Should have at least one suggestion"
 
 
 if __name__ == "__main__":

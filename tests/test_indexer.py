@@ -11,7 +11,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from src.indexer import IndexManager
 from src.search import SearchEngine
 
-
 @pytest.fixture
 def temp_data_dir():
     """Create a temporary data directory for testing"""

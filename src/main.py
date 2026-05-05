@@ -131,6 +131,15 @@ class SearchToolShell(cmd.Cmd):
 
         if not matches:
             print(f"[-] No pages found containing all words in: '{arg}'")
+            
+            # Get spelling suggestions for misspelled words
+            suggestions = self.engine.get_suggestions(arg)
+            
+            if suggestions:
+                print("\nDid you mean:")
+                for misspelled, corrections in suggestions.items():
+                    print(f"  '{misspelled}' -> {', '.join(corrections)}")
+                print()
         else:
             print(f"[+] Found {len(matches)} pages (ranked by relevance):")
             for rank, page_num in enumerate(matches, 1):
