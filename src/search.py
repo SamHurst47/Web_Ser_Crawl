@@ -1,51 +1,119 @@
+"""
+search.py - Search engine with TF-IDF ranking and query suggestions.
+
+Implements search functionality over a TF-IDF weighted inverted index.
+Supports AND-logic multi-word queries, ranks results by relevance, and
+provides spell checking for misspelled query terms.
+
+Example:
+    >>> from search import SearchEngine
+    >>> from indexer import IndexManager
+    >>> manager = IndexManager()
+    >>> manager.load_index()
+    >>> engine = SearchEngine(manager)
+    >>> results = engine.execute_find("good friends")
+    >>> suggestions = engine.get_suggestions("frends")
+"""
+
 import re
+from typing import List, Dict, Set
+
 from src.spellcheck import get_query_suggestions
 
+
 class SearchEngine:
-    def __init__(self, index_manager):
+    """
+    Search engine with TF-IDF ranking and spell checking capabilities.
+    
+    Provides search functionality over a TF-IDF weighted inverted index.
+    Implements AND-logic for multi-word queries (all words must appear on
+    a page) and ranks results by relevance using TF-IDF scores.
+    
+    Attributes:
+        manager: IndexManager instance containing the inverted index
+    
+    Example:
+        >>> engine = SearchEngine(manager)
+        >>> results = engine.execute_find("life beautiful")
+        >>> len(results) >= 0
+        True
+    """
+    
+    def __init__(self, index_manager) -> None:
+        """
+        Initialize the SearchEngine with an IndexManager.
+        
+        Args:
+            index_manager: IndexManager instance with loaded inverted index
+        """
         self.manager = index_manager
 
-    def execute_find(self, query):
+    def execute_find(self, query: str) -> List[str]:
         """
-        Find pages containing the query words using TF-IDF ranking.
-        Returns page IDs ranked by relevance (sum of TF-IDF scores).
+        Find pages containing ALL query words, ranked by TF-IDF relevance.
+        
+        Implements AND-logic search:
+        1. Tokenizes query into words
+        2. Finds pages containing ALL words (intersection)
+        3. Calculates relevance scores (sum of TF-IDF values)
+        4. Returns page IDs sorted by relevance (descending)
+        
+        Args:
+            query (str): Search query. Punctuation removed, case ignored.
+        
+        Returns:
+            List[str]: Page IDs sorted by relevance (highest first).
+                Empty list if no pages contain all query words.
+        
+        Examples:
+            >>> results = engine.execute_find("life")
+            >>> isinstance(results, list)
+            True
+            >>> results = engine.execute_find("good friends")
+            >>> # Returns only pages with BOTH words
+        
+        Note:
+            Query is case-insensitive and punctuation is removed.
+            Words not in index cause zero results (AND logic).
         """
-        # Clean the query and split into individual words
-        query_words = re.findall(r'\w+', query.lower())
+        # Tokenize query
+        query_words: List[str] = re.findall(r'\w+', query.lower())
         
         if not query_words:
             return []
 
-        # Get all pages containing ALL query words (AND logic)
+        # Initialize with pages containing first word
         if query_words[0] in self.manager.inverted_index:
-            result_set = set(self.manager.inverted_index[query_words[0]].keys())
+            result_set: Set[str] = set(
+                self.manager.inverted_index[query_words[0]].keys()
+            )
         else:
             return []
 
-        # Intersect with pages containing all other query words
+        # Intersect with pages containing other words (AND logic)
         for word in query_words[1:]:
             if word in self.manager.inverted_index:
-                word_set = set(self.manager.inverted_index[word].keys())
-                result_set = result_set.intersection(word_set)
+                word_pages: Set[str] = set(
+                    self.manager.inverted_index[word].keys()
+                )
+                result_set = result_set.intersection(word_pages)
             else:
-                # If any word is not in the index, no results
                 return []
             
-            # Optimization: If the intersection is already empty, stop
+            # Early termination if no matches
             if not result_set:
                 break
 
         if not result_set:
             return []
 
-        # Calculate relevance score for each page
-        # Score = sum of TF-IDF scores for all query terms
-        scored_results = []
+        # Calculate relevance scores
+        scored_results: List[Dict[str, any]] = []
         
         for page_id in result_set:
-            score = 0.0
+            score: float = 0.0
             
-            # Sum TF-IDF scores for all query words in this page
+            # Sum TF-IDF scores for all query words
             for word in query_words:
                 if word in self.manager.tf_idf_scores:
                     if page_id in self.manager.tf_idf_scores[word]:
@@ -56,30 +124,39 @@ class SearchEngine:
                 "score": score
             })
         
-        # Sort by score (descending - highest relevance first)
+        # Sort by score (descending)
         scored_results.sort(key=lambda x: x["score"], reverse=True)
         
-        # Return just the page IDs in ranked order
         return [result["page_id"] for result in scored_results]
     
-    def get_suggestions(self, query):
+    def get_suggestions(self, query: str) -> Dict[str, List[str]]:
         """
-        Get spelling suggestions for query words not in the index.
+        Get spelling suggestions for misspelled words in the query.
+        
+        Analyzes each word and provides suggestions for words not found in
+        the index. Uses Levenshtein distance with max edit distance of 2.
         
         Args:
-            query: The search query string
+            query (str): Search query to analyze
         
         Returns:
-            dict: Maps misspelled words to suggestions
-                  Format: {misspelled_word: [suggestion1, suggestion2, ...]}
+            Dict[str, List[str]]: Maps misspelled words to suggestions.
+                Format: {misspelled_word: [suggestion1, suggestion2, ...]}
+                Empty dict if all words are in index.
+        
+        Examples:
+            >>> suggestions = engine.get_suggestions("frends")
+            >>> # Returns: {"frends": ["friends", "trends"]}
+        
+        Note:
+            Maximum edit distance: 2
+            Up to 3 suggestions per misspelled word
         """
-        query_words = re.findall(r'\w+', query.lower())
+        query_words: List[str] = re.findall(r'\w+', query.lower())
         
         if not query_words:
             return {}
         
-        # Get all terms in the index
-        index_terms = set(self.manager.inverted_index.keys())
+        index_terms: Set[str] = set(self.manager.inverted_index.keys())
         
-        # Get suggestions for words not in index
         return get_query_suggestions(query_words, index_terms, max_distance=2)
