@@ -3,7 +3,22 @@
 A Python-based web crawler and search engine that scrapes quotes from [quotes.toscrape.com](https://quotes.toscrape.com), builds an inverted index for fast searching, and provides a command-line interface for querying quotes by content or author.
 
 ## AI Assistance Declaration
-This project was developed with the assistance of Generative AI tools. Generative AI was used to support tasks such as idea generation, drafting text, improving clarity, and refining code or documentation. All final decisions, implementation, and responsibility for the content remain with the project author.
+
+This project was developed with the assistance of multiple Generative AI tools, used strategically throughout different phases of development:
+
+### Tools Used:
+- **GitHub Copilot:** Code completion and syntax suggestions during implementation
+- **Google Gemini:** Architecture planning, debugging support, and algorithm explanations
+- **Claude (Anthropic):** Feature ideation, code review, and documentation refinement
+
+### Specific Uses:
+- **Planning & Architecture:** AI tools helped brainstorm the modular structure (crawler, indexer, search, spellcheck) and suggest implementation approaches for TF-IDF ranking and edit distance algorithms
+- **Code Development:** Copilot provided autocompletion for repetitive patterns; Gemini and Claude helped debug complex issues, particularly with the inverted index structure and spell checker logic
+- **Feature Suggestions:** AI suggested implementing the Levenshtein edit distance algorithm for spell checking and logarithmic scaling for TF-IDF calculations
+- **Documentation:** AI assisted in drafting README sections, docstrings, and code comments for clarity
+- **Testing:** AI helped generate edge case scenarios and suggested test coverage improvements
+
+All final decisions, implementation choices, and responsibility for the content remain entirely with me as the project author. with the project author.
 
 ---
 
